@@ -38,15 +38,7 @@ sudo usermod -aG input $USER
 systemctl --user enable --now raskladka
 ```
 
-### Универсальный установщик
-
-```bash
-curl -L -o install-raskladka.sh https://github.com/kiberdans/raskladka/releases/download/v0.1.0/install-raskladka.sh
-chmod +x install-raskladka.sh
-sudo ./install-raskladka.sh
-```
-
-### AppImage
+### AppImage (универсальный)
 
 ```bash
 curl -L -o raskladka.AppImage https://github.com/kiberdans/raskladka/releases/download/v0.1.0/raskladka-x86_64.AppImage
