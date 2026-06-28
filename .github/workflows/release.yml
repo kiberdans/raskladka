@@ -1,0 +1,40 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y librsvg2-bin rpm
+
+      - name: Build release binary
+        run: cargo build --release
+
+      - name: Build .deb
+        run: VERSION=${GITHUB_REF#refs/tags/v} bash build-deb.sh
+
+      - name: Build .rpm
+        run: VERSION=${GITHUB_REF#refs/tags/v} bash build-rpm.sh
+
+      - name: Build AppImage
+        run: VERSION=${GITHUB_REF#refs/tags/v} bash build-appimage.sh
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            target/release/raskladka
+            debian-pkg/raskladka_*.deb
+            rpm-pkg/raskladka-*.rpm
+            appimage-pkg/raskladka-*.AppImage
+          generate_release_notes: true

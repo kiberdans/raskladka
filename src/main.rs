@@ -36,7 +36,14 @@ struct Config {
     trigger: Trigger,
     timeout_ms: u64,
     lang_en: bool,
+    check_updates: bool,
+    autostart: bool,
 }
+
+static UPDATE_AVAILABLE: AtomicBool = AtomicBool::new(false);
+static UPDATE_VERSION: OnceLock<Mutex<String>> = OnceLock::new();
+
+const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Clone, PartialEq)]
 enum Trigger {
@@ -256,6 +263,8 @@ fn load_config() -> Config {
     let mut trigger = Trigger::Key(Key::ShiftLeft);
     let mut timeout_ms = 400u64;
     let mut lang_en = true;
+    let mut check_updates = true;
+    let mut autostart = false;
 
     if let Ok(data) = fs::read_to_string(&path) {
         for line in data.lines() {
@@ -268,13 +277,15 @@ fn load_config() -> Config {
                     "trigger" => trigger = parse_trigger(v.trim()),
                     "timeout_ms" => timeout_ms = v.trim().parse().unwrap_or(400),
                     "lang" => lang_en = v.trim() != "ru",
+                    "check_updates" => check_updates = v.trim() == "true",
+                    "autostart" => autostart = v.trim() == "true",
                     _ => {}
                 }
             }
         }
     }
 
-    Config { trigger, timeout_ms, lang_en }
+    Config { trigger, timeout_ms, lang_en, check_updates, autostart }
 }
 
 fn save_config(cfg: &Config) {
@@ -287,10 +298,14 @@ fn save_config(cfg: &Config) {
         "# raskladka config\n\
          trigger={}\n\
          timeout_ms={}\n\
-         lang={}\n",
+         lang={}\n\
+         check_updates={}\n\
+         autostart={}\n",
         trigger_to_str(&cfg.trigger),
         cfg.timeout_ms,
         lang,
+        cfg.check_updates,
+        cfg.autostart,
     );
     let _ = fs::write(&path, s);
 }
@@ -489,6 +504,8 @@ fn run_rdev_listener() {
                     trigger,
                     timeout_ms: cur.timeout_ms,
                     lang_en: cur.lang_en,
+                    check_updates: cur.check_updates,
+                    autostart: cur.autostart,
                 };
                 write_config(&cfg);
             }
@@ -560,13 +577,21 @@ impl Tray for RaskladkaTray {
     }
 
     fn tool_tip(&self) -> ToolTip {
-        let title = if CAPTURE_MODE.load(Ordering::Relaxed) {
-            tr("press a key...", "нажмите клавишу...")
+        let mut parts = if CAPTURE_MODE.load(Ordering::Relaxed) {
+            vec![tr("press a key...", "нажмите клавишу...").to_string()]
         } else if ENABLED.load(Ordering::Relaxed) {
-            tr("on", "вкл")
+            vec![tr("on", "вкл").to_string()]
         } else {
-            tr("off", "вык")
+            vec![tr("off", "вык").to_string()]
         };
+        if UPDATE_AVAILABLE.load(Ordering::Relaxed) {
+            let ver = UPDATE_VERSION.get()
+                .and_then(|m| m.lock().ok())
+                .map(|g| g.clone())
+                .unwrap_or_default();
+            parts.push(format!("{} v{}!", tr("update", "обновление"), ver));
+        }
+        let title = parts.join(" | ");
         ToolTip {
             title: title.into(),
             ..Default::default()
@@ -576,6 +601,7 @@ impl Tray for RaskladkaTray {
     fn activate(&mut self, _x: i32, _y: i32) {
         if !CAPTURE_MODE.load(Ordering::Relaxed) {
             ENABLED.fetch_xor(true, Ordering::SeqCst);
+            write_state();
         }
     }
 
@@ -596,46 +622,183 @@ impl Tray for RaskladkaTray {
             tr("rebind key", "выбрать клавишу"),
             trigger_label(&cfg.trigger)
         );
-        vec![
-            MenuItem::Standard(ksni::menu::StandardItem {
-                label: toggle_label.into(),
+        let mut items: Vec<MenuItem<Self>> = Vec::new();
+        items.push(MenuItem::Standard(ksni::menu::StandardItem {
+            label: toggle_label.into(),
+            activate: Box::new(|_: &mut Self| {
+                ENABLED.fetch_xor(true, Ordering::SeqCst);
+                write_state();
+            }),
+            ..Default::default()
+        }));
+        items.push(MenuItem::Standard(ksni::menu::StandardItem {
+            label: format!("{} ({})", tr("language", "язык"), lang_label).into(),
+            activate: Box::new(|_: &mut Self| {
+                let new_en = !LANG_EN.load(Ordering::Relaxed);
+                LANG_EN.store(new_en, Ordering::Release);
+                let mut cfg = read_config();
+                cfg.lang_en = new_en;
+                write_config(&cfg);
+                if let Some(m) = LOCK_FILE.get() {
+                    let _ = m.lock().unwrap().take();
+                }
+                let bin = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("raskladka"));
+                let _ = Command::new(&bin).spawn();
+                std::process::exit(0);
+            }),
+            ..Default::default()
+        }));
+        items.push(MenuItem::Standard(ksni::menu::StandardItem {
+            label: hotkey_label.into(),
+            activate: Box::new(|_: &mut Self| {
+                CAPTURE_MODE.store(true, Ordering::Release);
+            }),
+            ..Default::default()
+        }));
+        items.push(MenuItem::Standard(ksni::menu::StandardItem {
+            label: format!(
+                "{}: {}",
+                tr("check updates", "проверка обновлений"),
+                if read_config().check_updates { tr("on", "вкл") } else { tr("off", "вык") }
+            )
+            .into(),
+            activate: Box::new(|_: &mut Self| {
+                let mut cfg = read_config();
+                cfg.check_updates = !cfg.check_updates;
+                write_config(&cfg);
+                if cfg.check_updates {
+                    std::thread::spawn(check_for_updates);
+                }
+            }),
+            ..Default::default()
+        }));
+        items.push(MenuItem::Standard(ksni::menu::StandardItem {
+            label: format!(
+                "{}: {}",
+                tr("start on login", "автозапуск"),
+                if read_config().autostart { tr("on", "вкл") } else { tr("off", "вык") }
+            )
+            .into(),
+            activate: Box::new(|_: &mut Self| {
+                let mut cfg = read_config();
+                cfg.autostart = !cfg.autostart;
+                apply_autostart(cfg.autostart);
+                write_config(&cfg);
+            }),
+            ..Default::default()
+        }));
+        if UPDATE_AVAILABLE.load(Ordering::Relaxed) {
+            let ver = UPDATE_VERSION.get()
+                .and_then(|m| m.lock().ok())
+                .map(|g| g.clone())
+                .unwrap_or_default();
+            items.push(MenuItem::Standard(ksni::menu::StandardItem {
+                label: format!("{} v{} !", tr("update", "обновление"), ver).into(),
                 activate: Box::new(|_: &mut Self| {
-                    ENABLED.fetch_xor(true, Ordering::SeqCst);
+                    let _ = Command::new("xdg-open")
+                        .arg("https://github.com/kiberdans/raskladka/releases/latest")
+                        .spawn();
                 }),
                 ..Default::default()
+            }));
+        }
+        items.push(MenuItem::Standard(ksni::menu::StandardItem {
+            label: tr("exit", "выйти").into(),
+            activate: Box::new(|_: &mut Self| {
+                std::process::exit(0);
             }),
-            MenuItem::Standard(ksni::menu::StandardItem {
-                label: format!("{} ({})", tr("language", "язык"), lang_label).into(),
-                activate: Box::new(|_: &mut Self| {
-                    let new_en = !LANG_EN.load(Ordering::Relaxed);
-                    LANG_EN.store(new_en, Ordering::Release);
-                    let mut cfg = read_config();
-                    cfg.lang_en = new_en;
-                    write_config(&cfg);
-                    if let Some(m) = LOCK_FILE.get() {
-                        let _ = m.lock().unwrap().take();
-                    }
-                    let bin = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("raskladka"));
-                    let _ = Command::new(&bin).spawn();
-                    std::process::exit(0);
-                }),
-                ..Default::default()
-            }),
-            MenuItem::Standard(ksni::menu::StandardItem {
-                label: hotkey_label.into(),
-                activate: Box::new(|_: &mut Self| {
-                    CAPTURE_MODE.store(true, Ordering::Release);
-                }),
-                ..Default::default()
-            }),
-            MenuItem::Standard(ksni::menu::StandardItem {
-                label: tr("exit", "выйти").into(),
-                activate: Box::new(|_: &mut Self| {
-                    std::process::exit(0);
-                }),
-                ..Default::default()
-            }),
-        ]
+            ..Default::default()
+        }));
+        items
+    }
+}
+
+fn check_for_updates() {
+    let cfg = read_config();
+    if !cfg.check_updates {
+        return;
+    }
+    let out = Command::new("curl")
+        .args(["-s", "https://api.github.com/repos/kiberdans/raskladka/releases/latest"])
+        .output()
+        .ok();
+    let body = out.and_then(|o| {
+        if o.status.success() {
+            String::from_utf8(o.stdout).ok()
+        } else {
+            None
+        }
+    });
+    let latest = body.and_then(|s| {
+        // crude JSON parse: find "tag_name":"v..."
+        let prefix = "\"tag_name\":\"";
+        s.find(prefix).and_then(|i| {
+            let start = i + prefix.len();
+            s[start..].find('"').map(|end| s[start..start + end].to_string())
+        })
+    });
+    if let Some(ref ver) = latest {
+        let cur = format!("v{}", VERSION);
+        // simple string comparison works for v0.x.y semver
+        if *ver > cur {
+            UPDATE_AVAILABLE.store(true, Ordering::Release);
+            let _ = UPDATE_VERSION.set(Mutex::new(ver.clone()));
+        }
+    }
+}
+
+fn state_path() -> PathBuf {
+    let mut p = config_path();
+    p.set_file_name("state");
+    p
+}
+
+fn write_state() {
+    let s = if ENABLED.load(Ordering::Relaxed) { "on\n" } else { "off\n" };
+    let _ = fs::write(state_path(), s);
+}
+
+fn cmd_path() -> PathBuf {
+    let mut p = config_path();
+    p.set_file_name("cmd");
+    p
+}
+
+fn process_cmd() {
+    let p = cmd_path();
+    if let Ok(cmd) = fs::read_to_string(&p) {
+        let _ = fs::remove_file(&p);
+        match cmd.trim() {
+            "toggle" => {
+                ENABLED.fetch_xor(true, Ordering::SeqCst);
+                write_state();
+            }
+            _ => {}
+        }
+    }
+}
+
+fn apply_autostart(enabled: bool) {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let mut path = PathBuf::from(&home);
+    path.push(".config/autostart/raskladka.desktop");
+    if enabled {
+        let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("raskladka"));
+        if let Some(parent) = path.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        let s = format!(
+            "[Desktop Entry]\n\
+             Type=Application\n\
+             Name=raskladka\n\
+             Exec={}\n\
+             X-GNOME-Autostart-enabled=true\n\
+             NoDisplay=true\n",
+            exe.display()
+        );
+        let _ = fs::write(&path, s);
+    } else {
+        let _ = fs::remove_file(&path);
     }
 }
 
@@ -660,11 +823,36 @@ fn lock_singleton() -> std::fs::File {
 }
 
 fn main() {
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() > 1 {
+        match args[1].as_str() {
+            "status" => {
+                let s = fs::read_to_string(state_path()).unwrap_or_else(|_| "off".into());
+                println!("{}", s.trim());
+                return;
+            }
+            "toggle" => {
+                let p = cmd_path();
+                if let Some(parent) = p.parent() {
+                    let _ = fs::create_dir_all(parent);
+                }
+                let _ = fs::write(&p, "toggle\n");
+                return;
+            }
+            _ => {}
+        }
+    }
+
     let lock = lock_singleton();
     let _ = LOCK_FILE.set(Mutex::new(Some(lock)));
     let cfg = load_config();
+    let check_updates = cfg.check_updates;
+    let autostart = cfg.autostart;
     LANG_EN.store(cfg.lang_en, Ordering::Release);
     let _ = CONFIG.set(Mutex::new(cfg));
+
+    apply_autostart(autostart);
+    write_state();
 
     let on_rgba = render_svg(include_bytes!("../on.svg"), 24);
     let off_rgba = render_svg(include_bytes!("../off.svg"), 24);
@@ -672,11 +860,23 @@ fn main() {
     let tray = RaskladkaTray { on_rgba, off_rgba };
     ksni::TrayService::new(tray).spawn();
 
+    if check_updates {
+        std::thread::spawn(|| {
+            std::thread::sleep(Duration::from_secs(5));
+            check_for_updates();
+            loop {
+                std::thread::sleep(Duration::from_secs(3600));
+                check_for_updates();
+            }
+        });
+    }
+
     std::thread::spawn(|| {
         run_rdev_listener();
     });
 
     loop {
-        std::thread::sleep(Duration::from_secs(3600));
+        process_cmd();
+        std::thread::sleep(Duration::from_millis(500));
     }
 }

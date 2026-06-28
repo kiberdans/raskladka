@@ -4,3 +4,7 @@ target/
 *~
 .DS_Store
 debian-pkg/
+rpm-pkg/
+appimage-pkg/
+AppDir/
+appimagetool

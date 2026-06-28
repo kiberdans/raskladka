@@ -4,10 +4,9 @@ After=graphical-session.target
 
 [Service]
 Type=simple
-ExecStart=%h/Загрузки/raskladka/target/release/raskladka
+ExecStart=%h/.local/bin/raskladka
 Restart=on-failure
 RestartSec=2
-Environment=DISPLAY=:0
 
 [Install]
 WantedBy=default.target

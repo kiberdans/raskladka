@@ -1,6 +1,6 @@
 pkgbase = raskladka
 	pkgdesc = Keyboard layout switcher (QWERTY ↔ ЙЦУКЕН) via double-press of a configurable key
-	pkgver = 0.1.0
+	pkgver = 0.2.0
 	pkgrel = 1
 	url = https://github.com/kiberdans/raskladka
 	install = 
@@ -9,11 +9,12 @@ pkgbase = raskladka
 	makedepends = cargo
 	depends = xdotool
 	depends = xclip
+	depends = curl
 	optdepends = wl-clipboard: Wayland support
 	optdepends = wtype: Wayland support
 	conflicts = raskladka
 	provides = raskladka
-	source = raskladka-0.1.0.tar.gz::https://github.com/kiberdans/raskladka/archive/refs/tags/v0.1.0.tar.gz
+	source = raskladka-0.2.0.tar.gz::https://github.com/kiberdans/raskladka/archive/refs/tags/v0.2.0.tar.gz
 	sha256sums = SKIP
 
 pkgname = raskladka
