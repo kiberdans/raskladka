@@ -1,18 +1,174 @@
 use std::collections::{HashMap, HashSet};
+use std::fs;
 use std::io::Write;
+use std::path::PathBuf;
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use ksni::{self, Icon, MenuItem, ToolTip, Tray};
-use rdev::{listen, Event, EventType, Key};
+use rdev::{listen, Button, Event, EventType, Key};
 
 static ENABLED: AtomicBool = AtomicBool::new(true);
 static BUSY: AtomicBool = AtomicBool::new(false);
+static CAPTURE_MODE: AtomicBool = AtomicBool::new(false);
 
-struct State {
-    last_shift: Option<Instant>,
+static CONFIG: OnceLock<Mutex<Config>> = OnceLock::new();
+
+struct PressState {
+    last: Option<Instant>,
+}
+
+#[derive(Clone)]
+struct Config {
+    trigger: Trigger,
+    timeout_ms: u64,
+}
+
+#[derive(Clone, PartialEq)]
+enum Trigger {
+    Key(Key),
+    Button(Button),
+}
+
+fn trigger_label(t: &Trigger) -> String {
+    match t {
+        Trigger::Key(k) => format!("{:?}", k),
+        Trigger::Button(b) => format!("{:?}", b),
+    }
+}
+
+fn trigger_to_str(t: &Trigger) -> String {
+    match t {
+        Trigger::Key(k) => format!("{:?}", k),
+        Trigger::Button(b) => format!("m:{}", button_to_str(b)),
+    }
+}
+
+fn button_to_str(b: &Button) -> &'static str {
+    match b {
+        Button::Left => "Left",
+        Button::Right => "Right",
+        Button::Middle => "Middle",
+        Button::Unknown(_) => "Unknown",
+    }
+}
+
+fn str_to_button(s: &str) -> Option<Button> {
+    match s {
+        "Left" => Some(Button::Left),
+        "Right" => Some(Button::Right),
+        "Middle" => Some(Button::Middle),
+        _ => None,
+    }
+}
+
+macro_rules! match_key {
+    ($s:expr, $( $k:ident ),+ $(,)?) => {
+        match $s {
+            $( stringify!($k) => Some(Key::$k), )+
+            _ => None,
+        }
+    };
+}
+
+fn str_to_key(s: &str) -> Option<Key> {
+    match_key!(s,
+        Alt, AltGr, Backspace, CapsLock, ControlLeft, ControlRight,
+        Delete, DownArrow, End, Escape,
+        F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12,
+        Home, LeftArrow, MetaLeft, MetaRight,
+        PageDown, PageUp, Return, RightArrow,
+        ShiftLeft, ShiftRight, Space, Tab, UpArrow,
+        PrintScreen, ScrollLock, Pause, NumLock,
+        BackQuote, Num1, Num2, Num3, Num4, Num5,
+        Num6, Num7, Num8, Num9, Num0,
+        Minus, Equal, BackSlash, LeftBracket, RightBracket,
+        Quote, SemiColon, Comma, Dot, Slash,
+        KeyA, KeyB, KeyC, KeyD, KeyE, KeyF, KeyG, KeyH, KeyI, KeyJ,
+        KeyK, KeyL, KeyM, KeyN, KeyO, KeyP, KeyQ, KeyR, KeyS, KeyT,
+        KeyU, KeyV, KeyW, KeyX, KeyY, KeyZ,
+        IntlBackslash, Function, Insert,
+        KpDivide, KpMultiply, KpMinus, KpPlus, KpReturn,
+        Kp1, Kp2, Kp3, Kp4, Kp5, Kp6, Kp7, Kp8, Kp9, Kp0, KpDelete,
+    )
+}
+
+fn parse_trigger(s: &str) -> Trigger {
+    if let Some(btn) = s.strip_prefix("m:") {
+        str_to_button(btn)
+            .map(Trigger::Button)
+            .unwrap_or(Trigger::Key(Key::ShiftLeft))
+    } else {
+        str_to_key(s)
+            .map(Trigger::Key)
+            .unwrap_or(Trigger::Key(Key::ShiftLeft))
+    }
+}
+
+fn config_path() -> PathBuf {
+    let mut path = if let Ok(home) = std::env::var("HOME") {
+        PathBuf::from(home)
+    } else {
+        PathBuf::from(".")
+    };
+    path.push(".config/raskladka/config");
+    path
+}
+
+fn load_config() -> Config {
+    let path = config_path();
+    let mut trigger = Trigger::Key(Key::ShiftLeft);
+    let mut timeout_ms = 400u64;
+
+    if let Ok(data) = fs::read_to_string(&path) {
+        for line in data.lines() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            if let Some((k, v)) = line.split_once('=') {
+                match k.trim() {
+                    "trigger" => trigger = parse_trigger(v.trim()),
+                    "timeout_ms" => timeout_ms = v.trim().parse().unwrap_or(400),
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    Config { trigger, timeout_ms }
+}
+
+fn save_config(cfg: &Config) {
+    let path = config_path();
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    let s = format!(
+        "# raskladka config\n\
+         trigger={}\n\
+         timeout_ms={}\n",
+        trigger_to_str(&cfg.trigger),
+        cfg.timeout_ms,
+    );
+    let _ = fs::write(&path, s);
+}
+
+fn read_config() -> Config {
+    CONFIG.get().map(|m| m.lock().unwrap().clone()).unwrap_or_else(|| {
+        let cfg = load_config();
+        let _ = CONFIG.set(Mutex::new(cfg.clone()));
+        cfg
+    })
+}
+
+fn write_config(cfg: &Config) {
+    save_config(cfg);
+    if let Some(m) = CONFIG.get() {
+        *m.lock().unwrap() = cfg.clone();
+    }
 }
 
 struct Layout {
@@ -173,22 +329,49 @@ fn trigger_convert() {
 }
 
 fn run_rdev_listener() {
-    let state = Mutex::new(State { last_shift: None });
-    let double_shift_ms: u64 = 400;
+    let press_state = Mutex::new(PressState { last: None });
 
     let callback = move |event: Event| {
+        let event_type = &event.event_type;
+
+        if CAPTURE_MODE.load(Ordering::Acquire) {
+            let captured = match event_type {
+                EventType::KeyPress(k) => Some(Trigger::Key(*k)),
+                EventType::ButtonPress(b) if *b != Button::Left && *b != Button::Right => {
+                    Some(Trigger::Button(*b))
+                }
+                _ => None,
+            };
+
+            if let Some(trigger) = captured {
+                CAPTURE_MODE.store(false, Ordering::Release);
+                let cfg = Config {
+                    trigger,
+                    timeout_ms: 400,
+                };
+                write_config(&cfg);
+            }
+            return;
+        }
+
         if !ENABLED.load(Ordering::Relaxed) {
             return;
         }
-        if let EventType::KeyPress(Key::ShiftLeft) | EventType::KeyPress(Key::ShiftRight) =
-            event.event_type
-        {
-            let mut s = state.lock().unwrap();
+
+        let cfg = read_config();
+
+        let matches = match &cfg.trigger {
+            Trigger::Key(k) => matches!(event_type, EventType::KeyPress(ev) if *ev == *k),
+            Trigger::Button(b) => matches!(event_type, EventType::ButtonPress(ev) if *ev == *b),
+        };
+
+        if matches {
+            let mut s = press_state.lock().unwrap();
             let now = Instant::now();
-            let should = s.last_shift.map_or(false, |t| {
-                now.duration_since(t).as_millis() < double_shift_ms as u128
+            let should = s.last.map_or(false, |t| {
+                now.duration_since(t).as_millis() < cfg.timeout_ms as u128
             });
-            s.last_shift = Some(now);
+            s.last = Some(now);
             drop(s);
             if should {
                 std::thread::spawn(|| {
@@ -236,7 +419,9 @@ impl Tray for RaskladkaTray {
     }
 
     fn tool_tip(&self) -> ToolTip {
-        let title = if ENABLED.load(Ordering::Relaxed) {
+        let title = if CAPTURE_MODE.load(Ordering::Relaxed) {
+            "raskladka: нажмите клавишу..."
+        } else if ENABLED.load(Ordering::Relaxed) {
             "raskladka: включена"
         } else {
             "raskladka: выключена"
@@ -248,20 +433,34 @@ impl Tray for RaskladkaTray {
     }
 
     fn activate(&mut self, _x: i32, _y: i32) {
-        ENABLED.fetch_xor(true, Ordering::SeqCst);
+        if !CAPTURE_MODE.load(Ordering::Relaxed) {
+            ENABLED.fetch_xor(true, Ordering::SeqCst);
+        }
     }
 
     fn menu(&self) -> Vec<MenuItem<Self>> {
-        let label = if ENABLED.load(Ordering::Relaxed) {
+        let toggle_label = if ENABLED.load(Ordering::Relaxed) {
             "Выключить"
         } else {
             "Включить"
         };
+        let cfg = read_config();
+        let hotkey_label = format!(
+            "Переназначить клавишу (сейчас: {})",
+            trigger_label(&cfg.trigger)
+        );
         vec![
             MenuItem::Standard(ksni::menu::StandardItem {
-                label: label.into(),
+                label: toggle_label.into(),
                 activate: Box::new(|_: &mut Self| {
                     ENABLED.fetch_xor(true, Ordering::SeqCst);
+                }),
+                ..Default::default()
+            }),
+            MenuItem::Standard(ksni::menu::StandardItem {
+                label: hotkey_label.into(),
+                activate: Box::new(|_: &mut Self| {
+                    CAPTURE_MODE.store(true, Ordering::Release);
                 }),
                 ..Default::default()
             }),
@@ -277,6 +476,9 @@ impl Tray for RaskladkaTray {
 }
 
 fn main() {
+    let cfg = load_config();
+    let _ = CONFIG.set(Mutex::new(cfg));
+
     let on_rgba = render_svg(include_bytes!("../on.svg"), 24);
     let off_rgba = render_svg(include_bytes!("../off.svg"), 24);
 
