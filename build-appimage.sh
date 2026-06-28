@@ -32,6 +32,8 @@ Categories=Utility;
 Terminal=false
 DESKTOP
 
+cp "$APPDIR/usr/share/applications/${NAME}.desktop" "$APPDIR/${NAME}.desktop"
+
 cat > "$APPDIR/AppRun" <<APPRUN
 #!/bin/bash
 HERE="\$(dirname "\$(readlink -f "\$0")")"
