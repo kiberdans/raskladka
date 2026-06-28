@@ -25,7 +25,9 @@ systemctl --user enable --now raskladka
 
 ```bash
 sudo pacman -S xdotool xclip wl-clipboard wtype
-yay -G raskladka && cd raskladka && makepkg -si
+git clone https://github.com/kiberdans/raskladka
+cd raskladka
+makepkg -si
 systemctl --user enable --now raskladka
 ```
 
