@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=raskladka
+Comment=Переключение раскладки клавиатуры по двойному Shift
+Exec=/home/boaz/Загрузки/raskladka/target/release/raskladka
+Icon=raskladka
+Categories=Utility;
+Terminal=false
+X-GNOME-Autostart-enabled=true

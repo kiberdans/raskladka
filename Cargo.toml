@@ -1,0 +1,9 @@
+[package]
+name = "raskladka"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rdev = "0.5"
+resvg = "0.44"
+ksni = "0.2"
