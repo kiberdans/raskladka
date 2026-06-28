@@ -13,8 +13,17 @@ use rdev::{listen, Button, Event, EventType, Key};
 static ENABLED: AtomicBool = AtomicBool::new(true);
 static BUSY: AtomicBool = AtomicBool::new(false);
 static CAPTURE_MODE: AtomicBool = AtomicBool::new(false);
+static LANG_EN: AtomicBool = AtomicBool::new(true);
 
 static CONFIG: OnceLock<Mutex<Config>> = OnceLock::new();
+
+fn tr(en: &'static str, ru: &'static str) -> &'static str {
+    if LANG_EN.load(Ordering::Relaxed) {
+        en
+    } else {
+        ru
+    }
+}
 
 struct PressState {
     last: Option<Instant>,
@@ -542,11 +551,11 @@ impl Tray for RaskladkaTray {
 
     fn tool_tip(&self) -> ToolTip {
         let title = if CAPTURE_MODE.load(Ordering::Relaxed) {
-            "raskladka: нажмите клавишу..."
+            tr("raskladka: press a key...", "raskladka: нажмите клавишу...")
         } else if ENABLED.load(Ordering::Relaxed) {
-            "raskladka: включена"
+            tr("raskladka: enabled", "raskladka: включена")
         } else {
-            "raskladka: выключена"
+            tr("raskladka: disabled", "raskladka: выключена")
         };
         ToolTip {
             title: title.into(),
@@ -562,13 +571,19 @@ impl Tray for RaskladkaTray {
 
     fn menu(&self) -> Vec<MenuItem<Self>> {
         let toggle_label = if ENABLED.load(Ordering::Relaxed) {
-            "Выключить"
+            tr("Disable", "Выключить")
         } else {
-            "Включить"
+            tr("Enable", "Включить")
+        };
+        let lang_label = if LANG_EN.load(Ordering::Relaxed) {
+            "Русский"
+        } else {
+            "English"
         };
         let cfg = read_config();
         let hotkey_label = format!(
-            "Переназначить клавишу (сейчас: {})",
+            "{}: {}",
+            tr("Rebind key", "Переназначить клавишу"),
             trigger_label(&cfg.trigger)
         );
         vec![
@@ -580,6 +595,13 @@ impl Tray for RaskladkaTray {
                 ..Default::default()
             }),
             MenuItem::Standard(ksni::menu::StandardItem {
+                label: format!("{} ({})", tr("Language", "Язык"), lang_label).into(),
+                activate: Box::new(|_: &mut Self| {
+                    LANG_EN.fetch_xor(true, Ordering::SeqCst);
+                }),
+                ..Default::default()
+            }),
+            MenuItem::Standard(ksni::menu::StandardItem {
                 label: hotkey_label.into(),
                 activate: Box::new(|_: &mut Self| {
                     CAPTURE_MODE.store(true, Ordering::Release);
@@ -587,7 +609,7 @@ impl Tray for RaskladkaTray {
                 ..Default::default()
             }),
             MenuItem::Standard(ksni::menu::StandardItem {
-                label: "Выход".into(),
+                label: tr("Exit", "Выход").into(),
                 activate: Box::new(|_: &mut Self| {
                     std::process::exit(0);
                 }),
