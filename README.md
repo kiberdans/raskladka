@@ -4,48 +4,72 @@
 
 ## Установка
 
-### Зависимости
-
-- **X11:** `xclip`, `xdotool`
-- **Wayland:** `wl-clipboard`, `wtype`
+### Debian / Ubuntu
 
 ```bash
-# Arch
-sudo pacman -S xclip xdotool wl-clipboard wtype
-
-# Ubuntu/Debian
-sudo apt install xclip xdotool wl-clipboard wtype
-
-# Fedora
-sudo dnf install xclip xdotool wl-clipboard wtype
+sudo apt install xdotool xclip
+sudo dpkg -i raskladka_0.1.0_amd64.deb
+sudo usermod -aG input $USER
+# перелогиньтесь
+systemctl --user enable --now raskladka
 ```
 
-### Сборка
+### Fedora / RHEL
+
+```bash
+sudo dnf install xdotool xclip
+sudo rpm -i raskladka-0.1.0-1.x86_64.rpm
+sudo usermod -aG input $USER
+# перелогиньтесь
+systemctl --user enable --now raskladka
+```
+
+### Arch Linux
+
+```bash
+sudo pacman -S xdotool xclip wl-clipboard wtype
+git clone https://github.com/kiberdans/raskladka
+cd raskladka
+cargo build --release
+sudo cp target/release/raskladka /usr/local/bin/
+sudo usermod -aG input $USER
+# перелогиньтесь
+systemctl --user enable --now raskladka
+```
+
+### Универсальный установщик
+
+```bash
+curl -L -o install-raskladka.sh https://github.com/kiberdans/raskladka/releases/download/v0.1.0/install-raskladka.sh
+chmod +x install-raskladka.sh
+sudo ./install-raskladka.sh
+```
+
+### AppImage
+
+```bash
+curl -L -o raskladka.AppImage https://github.com/kiberdans/raskladka/releases/download/v0.1.0/raskladka-x86_64.AppImage
+chmod +x raskladka.AppImage
+./raskladka.AppImage
+```
+
+### Сборка из исходников
 
 ```bash
 git clone https://github.com/kiberdans/raskladka
 cd raskladka
 cargo build --release
-sudo ./target/release/raskladka
+sudo cp target/release/raskladka /usr/local/bin/
 ```
 
-### Автозагрузка (systemd)
+## После установки
 
-```bash
-cp raskladka.service ~/.config/systemd/user/
-systemctl --user enable --now raskladka.service
-```
-
-### Права доступа
-
-`rdev` требует доступ к `/dev/input/*`. Добавьте себя в группу `input`:
+Добавьте себя в группу `input` (иначе нужен `sudo`):
 
 ```bash
 sudo usermod -aG input $USER
 # перелогиньтесь
 ```
-
-Либо запускайте с `sudo`.
 
 ## Использование
 
@@ -54,6 +78,10 @@ sudo usermod -aG input $USER
 3. Раскладка переключится
 
 **Трей:** ЛКМ — вкл/выкл, ПКМ — меню, наведение — тултип.
+
+## Ссылки
+
+- [Releases](https://github.com/kiberdans/raskladka/releases)
 
 ## Лицензия
 
