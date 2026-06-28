@@ -38,10 +38,7 @@ sudo cp target/release/raskladka /usr/local/bin/
 systemctl --user enable --now raskladka
 ```
 
-После появления в AUR:
-```bash
-yay -G raskladka && cd raskladka && makepkg -si
-```
+
 
 ### AppImage (универсальный)
 
