@@ -1,8 +1,0 @@
-Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
-Upstream-Name: raskladka
-Upstream-Contact: kiberdans <kiberdans@yandex.ru>
-Source: https://github.com/kiberdans/raskladka
-
-Files: *
-Copyright: 2026 kiberdans
-License: MIT
