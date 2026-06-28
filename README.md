@@ -10,8 +10,6 @@
 ```bash
 sudo apt install xdotool xclip
 sudo dpkg -i raskladka_0.1.0_amd64.deb
-sudo usermod -aG input $USER
-# перелогиньтесь
 systemctl --user enable --now raskladka
 ```
 
@@ -20,8 +18,6 @@ systemctl --user enable --now raskladka
 ```bash
 sudo dnf install xdotool xclip
 sudo rpm -i raskladka-0.1.0-1.x86_64.rpm
-sudo usermod -aG input $USER
-# перелогиньтесь
 systemctl --user enable --now raskladka
 ```
 
@@ -33,8 +29,6 @@ git clone https://github.com/kiberdans/raskladka
 cd raskladka
 cargo build --release
 sudo cp target/release/raskladka /usr/local/bin/
-sudo usermod -aG input $USER
-# перелогиньтесь
 systemctl --user enable --now raskladka
 ```
 
@@ -55,14 +49,16 @@ cargo build --release
 sudo cp target/release/raskladka /usr/local/bin/
 ```
 
-## После установки
+## Права доступа
 
-Добавьте себя в группу `input` (иначе нужен `sudo`):
+Для перехвата нажатий клавиш нужен доступ к `/dev/input/*`.
+Добавьте себя в группу `input` и перелогиньтесь:
 
 ```bash
 sudo usermod -aG input $USER
-# перелогиньтесь
 ```
+
+Без этого можно запускать с `sudo`.
 
 ## Использование
 
