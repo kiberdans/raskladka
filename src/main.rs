@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::Write;
+use std::os::unix::io::AsRawFd;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -619,7 +620,28 @@ impl Tray for RaskladkaTray {
     }
 }
 
+fn lock_singleton() -> std::fs::File {
+    let mut path = if let Ok(home) = std::env::var("HOME") {
+        PathBuf::from(home)
+    } else {
+        PathBuf::from("/tmp")
+    };
+    path.push(".config/raskladka/lock");
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    let file = fs::File::create(&path).expect("cannot create lock file");
+    let fd = file.as_raw_fd();
+    let ret = unsafe { libc::flock(fd, libc::LOCK_EX | libc::LOCK_NB) };
+    if ret != 0 {
+        eprintln!("raskladka: another instance is already running");
+        std::process::exit(1);
+    }
+    file
+}
+
 fn main() {
+    let _lock = lock_singleton();
     let cfg = load_config();
     let _ = CONFIG.set(Mutex::new(cfg));
 
