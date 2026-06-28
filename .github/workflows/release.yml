@@ -23,7 +23,8 @@ jobs:
             libcairo2-dev \
             libpango1.0-dev \
             libgdk-pixbuf-2.0-dev \
-            libxml2-dev
+            libxml2-dev \
+            libdbus-1-dev
 
       - name: Build release binary
         run: cargo build --release

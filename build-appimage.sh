@@ -2,6 +2,7 @@
 set -euo pipefail
 NAME=raskladka
 VERSION="${VERSION:-0.2.0}"
+ARCH=x86_64
 
 echo "=== Building release binary ==="
 cargo build --release
@@ -41,18 +42,17 @@ chmod +x "$APPDIR/AppRun"
 
 echo "=== Downloading appimagetool ==="
 if ! command -v appimagetool &>/dev/null; then
-    ARCH=x86_64
     TOOL_URL="https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-${ARCH}.AppImage"
     curl -L -o appimagetool "$TOOL_URL"
     chmod +x appimagetool
-    APPIMAGETOOL="./appimagetool"
+    APPIMAGETOOL=("./appimagetool" "--appimage-extract-and-run")
 else
-    APPIMAGETOOL="appimagetool"
+    APPIMAGETOOL=("appimagetool")
 fi
 
 echo "=== Building AppImage ==="
 mkdir -p appimage-pkg
-$APPIMAGETOOL "$APPDIR" "appimage-pkg/${NAME}-${VERSION}-${ARCH}.AppImage"
+"${APPIMAGETOOL[@]}" "$APPDIR" "appimage-pkg/${NAME}-${VERSION}-${ARCH}.AppImage"
 
 echo "=== Done ==="
 ls -lh "appimage-pkg/${NAME}-${VERSION}-${ARCH}.AppImage"
