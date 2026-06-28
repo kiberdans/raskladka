@@ -17,6 +17,7 @@ static CAPTURE_MODE: AtomicBool = AtomicBool::new(false);
 static LANG_EN: AtomicBool = AtomicBool::new(true);
 
 static CONFIG: OnceLock<Mutex<Config>> = OnceLock::new();
+static LOCK_FILE: OnceLock<Mutex<Option<std::fs::File>>> = OnceLock::new();
 
 fn tr(en: &'static str, ru: &'static str) -> &'static str {
     if LANG_EN.load(Ordering::Relaxed) {
@@ -34,6 +35,7 @@ struct PressState {
 struct Config {
     trigger: Trigger,
     timeout_ms: u64,
+    lang_en: bool,
 }
 
 #[derive(Clone, PartialEq)]
@@ -253,6 +255,7 @@ fn load_config() -> Config {
     let path = config_path();
     let mut trigger = Trigger::Key(Key::ShiftLeft);
     let mut timeout_ms = 400u64;
+    let mut lang_en = true;
 
     if let Ok(data) = fs::read_to_string(&path) {
         for line in data.lines() {
@@ -264,13 +267,14 @@ fn load_config() -> Config {
                 match k.trim() {
                     "trigger" => trigger = parse_trigger(v.trim()),
                     "timeout_ms" => timeout_ms = v.trim().parse().unwrap_or(400),
+                    "lang" => lang_en = v.trim() != "ru",
                     _ => {}
                 }
             }
         }
     }
 
-    Config { trigger, timeout_ms }
+    Config { trigger, timeout_ms, lang_en }
 }
 
 fn save_config(cfg: &Config) {
@@ -278,12 +282,15 @@ fn save_config(cfg: &Config) {
     if let Some(parent) = path.parent() {
         let _ = fs::create_dir_all(parent);
     }
+    let lang = if cfg.lang_en { "en" } else { "ru" };
     let s = format!(
         "# raskladka config\n\
          trigger={}\n\
-         timeout_ms={}\n",
+         timeout_ms={}\n\
+         lang={}\n",
         trigger_to_str(&cfg.trigger),
         cfg.timeout_ms,
+        lang,
     );
     let _ = fs::write(&path, s);
 }
@@ -477,9 +484,11 @@ fn run_rdev_listener() {
 
             if let Some(trigger) = captured {
                 CAPTURE_MODE.store(false, Ordering::Release);
+                let cur = read_config();
                 let cfg = Config {
                     trigger,
-                    timeout_ms: 400,
+                    timeout_ms: cur.timeout_ms,
+                    lang_en: cur.lang_en,
                 };
                 write_config(&cfg);
             }
@@ -598,7 +607,17 @@ impl Tray for RaskladkaTray {
             MenuItem::Standard(ksni::menu::StandardItem {
                 label: format!("{} ({})", tr("language", "язык"), lang_label).into(),
                 activate: Box::new(|_: &mut Self| {
-                    LANG_EN.fetch_xor(true, Ordering::SeqCst);
+                    let new_en = !LANG_EN.load(Ordering::Relaxed);
+                    LANG_EN.store(new_en, Ordering::Release);
+                    let mut cfg = read_config();
+                    cfg.lang_en = new_en;
+                    write_config(&cfg);
+                    if let Some(m) = LOCK_FILE.get() {
+                        let _ = m.lock().unwrap().take();
+                    }
+                    let bin = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("raskladka"));
+                    let _ = Command::new(&bin).spawn();
+                    std::process::exit(0);
                 }),
                 ..Default::default()
             }),
@@ -641,8 +660,10 @@ fn lock_singleton() -> std::fs::File {
 }
 
 fn main() {
-    let _lock = lock_singleton();
+    let lock = lock_singleton();
+    let _ = LOCK_FILE.set(Mutex::new(Some(lock)));
     let cfg = load_config();
+    LANG_EN.store(cfg.lang_en, Ordering::Release);
     let _ = CONFIG.set(Mutex::new(cfg));
 
     let on_rgba = render_svg(include_bytes!("../on.svg"), 24);
