@@ -1,0 +1,17 @@
+Source: raskladka
+Section: utils
+Priority: optional
+Maintainer: kiberdans <kiberdans@yandex.ru>
+Build-Depends: debhelper-compat (=13), cargo, rustc
+Standards-Version: 4.6.2
+Homepage: https://github.com/kiberdans/raskladka
+
+Package: raskladka
+Architecture: amd64
+Depends: ${shlibs:Depends}, ${misc:Depends}, xdotool, xclip, libxdo3
+Recommends: libnotify-bin
+Description: Keyboard layout switcher via double Shift
+ Переключает раскладку клавиатуры (QWERTY ↔ ЙЦУКЕН)
+ по двойному нажатию Shift. Работает в трее.
+ .
+ Поддержка X11 и Wayland.
