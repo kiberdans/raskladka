@@ -25,16 +25,7 @@ systemctl --user enable --now raskladka
 
 ```bash
 sudo pacman -S xdotool xclip wl-clipboard wtype
-
-# Через PKGBUILD из репозитория
-git clone https://github.com/kiberdans/raskladka
-cd raskladka
-makepkg -si
-systemctl --user enable --now raskladka
-
-# Или cargo (без сборки пакета)
-cargo build --release
-sudo cp target/release/raskladka /usr/local/bin/
+yay -G raskladka && cd raskladka && makepkg -si
 systemctl --user enable --now raskladka
 ```
 
