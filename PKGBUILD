@@ -1,6 +1,6 @@
 # Maintainer: kiberdans <kiberdans@yandex.ru>
 pkgname=raskladka
-pkgver=0.2.0
+pkgver=0.2.1
 pkgrel=1
 pkgdesc="Keyboard layout switcher (QWERTY ↔ ЙЦУКЕН) via double-press of a configurable key"
 arch=('x86_64')
@@ -8,7 +8,7 @@ url="https://github.com/kiberdans/raskladka"
 license=('MIT')
 depends=('xdotool' 'xclip' 'curl')
 optdepends=('wl-clipboard: Wayland support'
-            'wtype: Wayland support')
+            'ydotool: Wayland input emulation')
 makedepends=('cargo')
 source=("$pkgname-$pkgver.tar.gz::https://github.com/kiberdans/raskladka/archive/refs/tags/v$pkgver.tar.gz")
 sha256sums=('SKIP')

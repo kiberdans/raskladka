@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 NAME=raskladka
-VERSION="${VERSION:-0.2.0}"
+VERSION="${VERSION:-0.2.1}"
 ARCH=amd64
 PKG_DIR="debian-pkg/${NAME}_${VERSION}_${ARCH}"
 
@@ -41,7 +41,7 @@ Priority: optional
 Architecture: $ARCH
 Maintainer: kiberdans <kiberdans@yandex.ru>
 Depends: xdotool, xclip, curl
-Recommends: wl-clipboard, wtype
+Recommends: wl-clipboard, ydotool
 Description: Keyboard layout switcher via double-press
  Переключает раскладку клавиатуры (QWERTY ↔ ЙЦУКЕН)
  по двойному нажатию настраиваемой клавиши. Работает в трее.

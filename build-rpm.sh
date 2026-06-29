@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 NAME=raskladka
-VERSION="${VERSION:-0.2.0}"
+VERSION="${VERSION:-0.2.1}"
 ARCH=x86_64
 RPM_DIR="rpm-pkg"
 
@@ -44,7 +44,7 @@ License:        MIT
 URL:            https://github.com/kiberdans/raskladka
 
 Requires:       xdotool, xclip, curl
-Recommends:     wl-clipboard, wtype
+Recommends:     wl-clipboard, ydotool
 
 %description
 Переключает раскладку клавиатуры (QWERTY ↔ ЙЦУКЕН)

@@ -9,7 +9,7 @@
 
 ```bash
 sudo apt install xdotool xclip curl
-sudo dpkg -i raskladka_0.2.0_amd64.deb
+sudo dpkg -i raskladka_0.2.1_amd64.deb
 systemctl --user enable --now raskladka
 ```
 
@@ -17,14 +17,14 @@ systemctl --user enable --now raskladka
 
 ```bash
 sudo dnf install xdotool xclip curl
-sudo rpm -i raskladka-0.2.0-1.x86_64.rpm
+sudo rpm -i raskladka-0.2.1-1.x86_64.rpm
 systemctl --user enable --now raskladka
 ```
 
 ### Arch Linux
 
 ```bash
-sudo pacman -S xdotool xclip wl-clipboard wtype curl
+sudo pacman -S xdotool xclip wl-clipboard ydotool curl
 git clone https://github.com/kiberdans/raskladka
 cd raskladka
 makepkg -si
@@ -36,7 +36,7 @@ systemctl --user enable --now raskladka
 ### AppImage (универсальный)
 
 ```bash
-curl -L -o raskladka.AppImage https://github.com/kiberdans/raskladka/releases/download/v0.2.0/raskladka-x86_64.AppImage
+curl -L -o raskladka.AppImage https://github.com/kiberdans/raskladka/releases/download/v0.2.1/raskladka-x86_64.AppImage
 chmod +x raskladka.AppImage
 ./raskladka.AppImage
 ```
@@ -60,6 +60,32 @@ sudo usermod -aG input $USER
 ```
 
 Без этого можно запускать с `sudo`.
+
+### Wayland
+
+На Wayland для эмуляции ввода используется `ydotool`. Установите и запустите демон:
+
+```bash
+sudo pacman -S ydotool  # или ваш пакетный менеджер
+sudo systemctl enable --now ydotoold
+```
+
+В systemd-сервис raskladka нужно добавить переменные окружения Wayland.
+Отредактируйте сервис:
+
+```bash
+systemctl --user edit raskladka
+```
+
+Добавьте:
+
+```ini
+[Service]
+Environment=WAYLAND_DISPLAY=wayland-0
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+Environment=YDOTOOL_SOCKET=/run/user/1000/.ydotool_socket
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus
+```
 
 ## Использование
 

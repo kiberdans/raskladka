@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 NAME=raskladka
-VERSION="${VERSION:-0.2.0}"
+VERSION="${VERSION:-0.2.1}"
 ARCH=x86_64
 
 echo "=== Building release binary ==="

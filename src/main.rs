@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fs;
 use std::io::Write;
 use std::os::unix::io::AsRawFd;
@@ -15,6 +15,7 @@ static ENABLED: AtomicBool = AtomicBool::new(true);
 static BUSY: AtomicBool = AtomicBool::new(false);
 static CAPTURE_MODE: AtomicBool = AtomicBool::new(false);
 static LANG_EN: AtomicBool = AtomicBool::new(true);
+static LAST_PRIMARY: OnceLock<Mutex<String>> = OnceLock::new();
 
 static CONFIG: OnceLock<Mutex<Config>> = OnceLock::new();
 static LOCK_FILE: OnceLock<Mutex<Option<std::fs::File>>> = OnceLock::new();
@@ -328,7 +329,6 @@ fn write_config(cfg: &Config) {
 struct Layout {
     en_to_ru: HashMap<char, char>,
     ru_to_en: HashMap<char, char>,
-    ru_chars: HashSet<char>,
 }
 
 fn build_layout() -> Layout {
@@ -339,41 +339,25 @@ fn build_layout() -> Layout {
 
     let mut en_to_ru = HashMap::new();
     let mut ru_to_en = HashMap::new();
-    let mut ru_chars = HashSet::new();
 
     for (e, r) in en.chars().zip(ru.chars()) {
         en_to_ru.insert(e, r);
         ru_to_en.insert(r, e);
-        ru_chars.insert(r);
     }
     for (e, r) in en_upper.chars().zip(ru_upper.chars()) {
         en_to_ru.insert(e, r);
         ru_to_en.insert(r, e);
-        ru_chars.insert(r);
     }
 
-    Layout { en_to_ru, ru_to_en, ru_chars }
+    Layout { en_to_ru, ru_to_en }
 }
 
 fn convert(text: &str, layout: &Layout) -> String {
-    let mut en = 0usize;
-    let mut ru = 0usize;
-    for c in text.chars() {
-        if layout.ru_chars.contains(&c) {
-            ru += 1;
-        } else if c.is_ascii_alphabetic() || "[]{};':\",./<>?".contains(c) {
-            en += 1;
-        }
-    }
-    let from_ru = ru > en;
-
     text.chars()
         .map(|c| {
-            if from_ru {
-                layout.ru_to_en.get(&c).copied().unwrap_or(c)
-            } else {
-                layout.en_to_ru.get(&c).copied().unwrap_or(c)
-            }
+            layout.ru_to_en.get(&c).copied()
+                .or_else(|| layout.en_to_ru.get(&c).copied())
+                .unwrap_or(c)
         })
         .collect()
 }
@@ -459,13 +443,21 @@ fn trigger_convert() {
 
             if let Some(ref t) = text {
                 if !t.trim().is_empty() {
+                    let last = LAST_PRIMARY.get_or_init(|| Mutex::new(String::new()));
+                    let mut last = last.lock().unwrap();
+                    if *last == *t {
+                        BUSY.store(false, Ordering::SeqCst);
+                        return;
+                    }
+                    *last = t.clone();
+
                     let converted = convert(t, &layout);
                     if converted != *t {
                         pipe_to_cmd("wl-copy", &[], &converted);
                         std::thread::sleep(Duration::from_millis(50));
 
-                        let _ = Command::new("wtype")
-                            .args(["-s", "ctrl+v"])
+                        let _ = Command::new("ydotool")
+                            .args(["key", "29:1", "47:1", "47:0", "29:0"])
                             .output();
                         std::thread::sleep(Duration::from_millis(100));
                     }
