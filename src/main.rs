@@ -264,7 +264,7 @@ fn load_config() -> Config {
     let mut trigger = Trigger::Key(Key::ShiftLeft);
     let mut timeout_ms = 400u64;
     let mut lang_en = true;
-    let mut check_updates = true;
+    let mut check_updates = false;
     let mut autostart = false;
 
     if let Ok(data) = fs::read_to_string(&path) {
@@ -392,8 +392,24 @@ fn pipe_to_cmd(cmd: &str, args: &[&str], text: &str) {
         .stdin(std::process::Stdio::piped())
         .spawn()
         .expect(&format!("failed to spawn {}", cmd));
-    let _ = child.stdin.take().unwrap().write_all(text.as_bytes());
-    let _ = child.wait();
+    {
+        let mut stdin = child.stdin.take().unwrap();
+        let _ = stdin.write_all(text.as_bytes());
+    }
+    let start = Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) => {
+                if start.elapsed() > Duration::from_secs(3) {
+                    let _ = child.kill();
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            Err(_) => break,
+        }
+    }
 }
 
 fn trigger_convert() {
@@ -437,9 +453,9 @@ fn trigger_convert() {
             }
         }
         Backend::Wayland => {
-            let saved = run_cmd("wl-paste", &[]);
+            let saved = run_cmd("wl-paste", &[]).map(|s| s.trim_end().to_string());
 
-            let text = run_cmd("wl-paste", &["--primary"]);
+            let text = run_cmd("wl-paste", &["--primary"]).map(|s| s.trim_end().to_string());
 
             if let Some(ref t) = text {
                 if !t.trim().is_empty() {
