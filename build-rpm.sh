@@ -24,6 +24,8 @@ mkdir -p "$INSTALL_ROOT/usr/share/icons/hicolor/scalable/apps"
 mkdir -p "$INSTALL_ROOT/usr/lib/systemd/user"
 
 cp "target/release/$NAME" "$INSTALL_ROOT/usr/bin/"
+cp "$NAME-wrapper.sh" "$INSTALL_ROOT/usr/bin/${NAME}-wrapper.sh"
+chmod 755 "$INSTALL_ROOT/usr/bin/${NAME}-wrapper.sh"
 cp "$NAME.desktop" "$INSTALL_ROOT/usr/share/applications/"
 cp "$NAME.service" "$INSTALL_ROOT/usr/lib/systemd/user/"
 cp on.svg "$INSTALL_ROOT/usr/share/icons/hicolor/scalable/apps/${NAME}-on.svg"
@@ -53,6 +55,7 @@ Recommends:     wl-clipboard, ydotool
 
 %files
 /usr/bin/$NAME
+/usr/bin/$NAME-wrapper.sh
 /usr/share/applications/$NAME.desktop
 /usr/lib/systemd/user/$NAME.service
 /usr/share/icons/hicolor/scalable/apps/${NAME}-on.svg

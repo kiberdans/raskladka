@@ -19,6 +19,8 @@ mkdir -p "$PKG_DIR/usr/lib/systemd/user"
 
 echo "=== Copying files ==="
 cp "target/release/$NAME" "$PKG_DIR/usr/bin/"
+cp "$NAME-wrapper.sh" "$PKG_DIR/usr/bin/${NAME}-wrapper.sh"
+chmod 755 "$PKG_DIR/usr/bin/${NAME}-wrapper.sh"
 cp "$NAME.desktop" "$PKG_DIR/usr/share/applications/"
 cp "$NAME.service" "$PKG_DIR/usr/lib/systemd/user/"
 cp on.svg "$PKG_DIR/usr/share/icons/hicolor/scalable/apps/${NAME}-on.svg"
